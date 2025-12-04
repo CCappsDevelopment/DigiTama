@@ -32,3 +32,7 @@ desktop.ini
 # Project specific
 # *.raw
 .github/copilot-instructions.md
+deploy.ps1
+
+# Legacy files (kept for reference, not tracked)
+legacy/
