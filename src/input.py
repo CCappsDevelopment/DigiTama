@@ -1,12 +1,17 @@
 # input.py
-# Input handling: button edge detection, debouncing, screen sleep management
+# Interrupt-driven input handling with debouncing and screen sleep management
 
 import time
+from machine import Pin, disable_irq, enable_irq
 import config
 
 
 class Input:
-    """Handles all input processing with debouncing and screen sleep."""
+    """Interrupt-driven button input with debouncing and screen sleep.
+    
+    Uses hardware interrupts for instant button response. ISRs set flags
+    that are consumed by the main loop via update().
+    """
     
     # Button indices
     BTN_A = 0  # Next
@@ -14,7 +19,7 @@ class Input:
     BTN_C = 2  # Back/Cancel
     
     def __init__(self, display, buttons):
-        """Initialize input handler.
+        """Initialize interrupt-driven input handler.
         
         Args:
             display: Display object (for sleep on/off)
@@ -23,42 +28,45 @@ class Input:
         self.display = display
         self.btn_a, self.btn_b, self.btn_c = buttons
         
-        # Previous button states for edge detection
-        self.prev_state = (1, 1, 1)  # All released (pull-up)
+        # Flags set by ISR, read/cleared by main loop
+        # Using list because ISR closures can't reassign outer variables
+        self._pressed = [False, False, False]
         
-        # Debounce: last press time per button
-        self.last_press_time = [0, 0, 0]
-        
-        # Pending presses (accumulated between update() calls)
-        self.pending_presses = [False, False, False]
+        # Debounce: last press time per button (in ms)
+        self._last_press = [0, 0, 0]
         
         # Screen sleep state
         self.screen_on = True
         self.last_activity = time.ticks_ms()
+        
+        # Attach interrupt handlers (falling edge = button pressed)
+        self.btn_a.irq(trigger=Pin.IRQ_FALLING, handler=self._make_isr(0))
+        self.btn_b.irq(trigger=Pin.IRQ_FALLING, handler=self._make_isr(1))
+        self.btn_c.irq(trigger=Pin.IRQ_FALLING, handler=self._make_isr(2))
     
-    def poll(self):
-        """Poll buttons and accumulate presses. Call this frequently (~5ms)."""
-        current_time = time.ticks_ms()
-        current_state = (
-            self.btn_a.value(),
-            self.btn_b.value(),
-            self.btn_c.value()
-        )
+    def _make_isr(self, btn_idx):
+        """Create an ISR closure for a specific button index.
         
-        for i in range(3):
-            # Edge detection: was released (1), now pressed (0)
-            if self.prev_state[i] == 1 and current_state[i] == 0:
-                # Debounce check
-                if time.ticks_diff(current_time, self.last_press_time[i]) > config.DEBOUNCE_MS:
-                    self.pending_presses[i] = True
-                    self.last_press_time[i] = current_time
+        Returns a function suitable for pin.irq(handler=...).
+        """
+        # Capture the pin object for state checking
+        pins = [self.btn_a, self.btn_b, self.btn_c]
+        pin_obj = pins[btn_idx]
         
-        self.prev_state = current_state
+        def isr(pin):
+            # ISR must be fast - only set flag with debounce check
+            # Also verify pin is actually LOW (pressed) to filter release bounce
+            if pin_obj.value() == 0:  # Still pressed (active-low)
+                now = time.ticks_ms()
+                if time.ticks_diff(now, self._last_press[btn_idx]) > config.DEBOUNCE_MS:
+                    self._pressed[btn_idx] = True
+                    self._last_press[btn_idx] = now
+        return isr
     
     def update(self):
-        """Process accumulated presses and manage screen sleep.
+        """Consume pending button presses and manage screen sleep.
         
-        Call once per game loop iteration (after polling).
+        Call once per game loop iteration.
         
         Returns:
             tuple: (screen_on, just_woke, pressed)
@@ -66,12 +74,14 @@ class Input:
                 - just_woke: bool, did screen just wake up
                 - pressed: tuple of (btn_a, btn_b, btn_c) pressed states
         """
-        # One final poll to catch recent presses
-        self.poll()
-        
-        # Collect pending presses and reset
-        pressed = tuple(self.pending_presses)
-        self.pending_presses = [False, False, False]
+        # Atomically read and clear flags to prevent race conditions
+        # Disable interrupts during read-modify-write
+        irq_state = disable_irq()
+        pressed = (self._pressed[0], self._pressed[1], self._pressed[2])
+        self._pressed[0] = False
+        self._pressed[1] = False
+        self._pressed[2] = False
+        enable_irq(irq_state)
         
         any_pressed = any(pressed)
         just_woke = False
@@ -99,3 +109,9 @@ class Input:
     def reset_timeout(self):
         """Reset the screen timeout timer."""
         self.last_activity = time.ticks_ms()
+    
+    def cleanup(self):
+        """Disable interrupts. Call on shutdown."""
+        self.btn_a.irq(handler=None)
+        self.btn_b.irq(handler=None)
+        self.btn_c.irq(handler=None)

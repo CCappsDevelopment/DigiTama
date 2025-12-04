@@ -37,27 +37,27 @@ class Game:
         
         self.state = GameState()
         
+        # Do initial full-screen render
+        self.graphics.render_initial()
+        
         print("DigiTama ready!")
     
     def run(self):
         """Main game loop."""
         self.running = True
-        last_render_time = time.ticks_ms()
+        last_update_time = time.ticks_ms()
         
         while self.running:
-            # Poll buttons frequently for responsive input
-            self.input.poll()
-            
-            # Check if it's time to update/render (maintain ~12.5 FPS for animations)
+            # Check if it's time to update/render
             now = time.ticks_ms()
-            elapsed = time.ticks_diff(now, last_render_time)
+            elapsed = time.ticks_diff(now, last_update_time)
             
             if elapsed >= config.BG_FRAME_DELAY_MS:
-                last_render_time = now
+                last_update_time = now
                 self._update()
                 self._render()
             else:
-                # Short sleep to prevent CPU spinning, but still poll fast
+                # Sleep between updates - interrupts will still fire and set flags
                 time.sleep_ms(config.INPUT_POLL_MS)
     
     def _update(self):
@@ -84,8 +84,10 @@ class Game:
         
         # Handle button presses
         if btn_a:  # Next
+            old_selection = self.state.menu.selected
             self.state.menu.select_next()
-            # print(f"Selected: {self.state.menu.selected}")
+            # Update only the changed menu rectangles
+            self.graphics.update_menu_selection(old_selection, self.state.menu.selected)
         
         if btn_b:  # Confirm
             action = self.state.menu.confirm()
@@ -93,23 +95,23 @@ class Game:
                 self.state.handle_menu_action(action)
         
         if btn_c:  # Back/Cancel
+            old_selection = self.state.menu.selected
             self.state.menu.clear_selection()
-            print("Selection cleared")
+            # Update only the changed menu rectangle
+            self.graphics.update_menu_selection(old_selection, None)
         
         # Update sprite animation timing
         if self.state.should_advance_sprite():
             self.graphics.advance_sprite_frame()
     
     def _render(self):
-        """Render current frame."""
+        """Render only changed regions (dirty rectangles)."""
         # Don't render if screen is off
         if not self.input.screen_on:
             return
         
-        # Render frame with current menu selection
-        self.graphics.render_frame(
-            selected_menu=self.state.menu.selected
-        )
+        # Update sprite region if animation frame changed
+        self.graphics.update_sprite()
     
     def stop(self):
         """Stop the game loop."""
@@ -117,6 +119,7 @@ class Game:
     
     def cleanup(self):
         """Clean up resources."""
+        self.input.cleanup()  # Disable button IRQs
         self.hardware.cleanup()
 
 

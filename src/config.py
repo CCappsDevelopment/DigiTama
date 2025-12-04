@@ -40,7 +40,7 @@ BG_FRAME_DELAY_MS = 80           # Background animation speed (~12.5 FPS)
 SPRITE_FPS = 3                   # Sprite animation speed
 SPRITE_FRAME_DELAY_MS = int(1000 / SPRITE_FPS)
 INPUT_POLL_MS = 5                # Button polling interval (fast for responsiveness)
-DEBOUNCE_MS = 50                 # Button debounce time
+DEBOUNCE_MS = 100                # Button debounce time (filters press/release bounce)
 
 # =============================================================================
 # SPRITE SHEET
