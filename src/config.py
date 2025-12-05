@@ -43,6 +43,18 @@ INPUT_POLL_MS = 5                # Button polling interval (fast for responsiven
 DEBOUNCE_MS = 100                # Button debounce time (filters press/release bounce)
 
 # =============================================================================
+# GAME PHASES (lifecycle state machine)
+# =============================================================================
+PHASE_WAITING = 0    # Initial state: no pet, waiting for BTN A + BTN C to start
+PHASE_EGG = 1        # Egg displayed, hatching countdown active
+PHASE_ALIVE = 2      # DigiTama alive, normal gameplay
+PHASE_DEAD = 3       # Death state (transitions immediately back to WAITING)
+
+# Lifecycle timing (in game ticks, 1 tick = 600ms)
+EGG_HATCH_TICKS = 100    # Ticks before egg hatches (~60 seconds)
+DEATH_TICKS = 100        # Ticks after hatching before death (~60 seconds)
+
+# =============================================================================
 # SPRITE SHEET (yoshisprite.raw: 320x96, 32x32 frames)
 # =============================================================================
 SPRITE_W = 32
@@ -79,6 +91,45 @@ SPRITE_X = (WIDTH - SPRITE_DISPLAY_W) // 2
 SPRITE_Y = (HEIGHT - SPRITE_DISPLAY_H) // 2
 
 # =============================================================================
+# EGG SPRITE SHEET (yoshieggs.raw: 128x160, 32x32 frames)
+# =============================================================================
+EGG_SPRITE_W = 32
+EGG_SPRITE_H = 32
+EGG_SHEET_W = 128
+EGG_SHEET_H = 160
+
+# Egg colors (rows)
+EGG_GREEN = 0
+EGG_RED = 1
+EGG_BLUE = 2
+EGG_YELLOW = 3
+EGG_PINK = 4
+
+# Egg sizes (column pairs)
+EGG_SMALL = 0  # Columns 0-1
+EGG_BIG = 1    # Columns 2-3
+
+# Each egg animation has 2 frames
+EGG_FRAME_COUNT = 2
+
+# Helper to get egg frame coordinates
+# Returns (x, y) of top-left corner for given color, size, and frame
+def egg_frame_coords(color, size, frame):
+    """Get sprite sheet coordinates for an egg frame.
+    
+    Args:
+        color: EGG_GREEN, EGG_RED, EGG_BLUE, EGG_YELLOW, or EGG_PINK
+        size: EGG_SMALL or EGG_BIG
+        frame: 0 or 1 (animation frame)
+    
+    Returns:
+        (x, y) tuple of top-left corner in sprite sheet
+    """
+    col = (size * 2) + frame  # 0,1 for small; 2,3 for big
+    row = color
+    return (col * EGG_SPRITE_W, row * EGG_SPRITE_H)
+
+# =============================================================================
 # COLORS (RGB565)
 # =============================================================================
 def color565(r, g, b):
@@ -113,3 +164,4 @@ MENU_RECTS = [
 ASSET_BG = "tree-bg.raw"
 ASSET_MENU = "menutest.raw"  # Menu overlay with transparency
 ASSET_SPRITE = "yoshisprite.raw"
+ASSET_EGGS = "yoshieggs.raw"
