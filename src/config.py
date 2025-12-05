@@ -43,18 +43,40 @@ INPUT_POLL_MS = 5                # Button polling interval (fast for responsiven
 DEBOUNCE_MS = 100                # Button debounce time (filters press/release bounce)
 
 # =============================================================================
-# SPRITE SHEET
+# SPRITE SHEET (yoshisprite.raw: 320x96, 32x32 frames)
 # =============================================================================
-SPRITE_W = 16
-SPRITE_H = 16
-SPRITE_SHEET_W = 48
-SPRITE_SHEET_H = 64
-SPRITE_FRAMES_PER_ROW = 3
-SPRITE_ROWS = 4  # forward, left, right, back
+SPRITE_W = 32
+SPRITE_H = 32
+SPRITE_SHEET_W = 320
+SPRITE_SHEET_H = 96
 
-# Sprite position (centered)
-SPRITE_X = (WIDTH - SPRITE_W) // 2
-SPRITE_Y = (HEIGHT - SPRITE_H) // 2
+# Animation definitions: (row_y, frame_count)
+# Row 0 (Y: 0-31): Walk - 10 frames
+# Row 1 (Y: 32-63): Idle-Trot - 8 frames
+# Row 2 (Y: 64-95): Idle-Chin Scratch - 8 frames
+ANIM_WALK = 0
+ANIM_IDLE_TROT = 1
+ANIM_CHIN_SCRATCH = 2
+
+ANIM_FRAME_COUNTS = {
+    ANIM_WALK: 10,
+    ANIM_IDLE_TROT: 8,
+    ANIM_CHIN_SCRATCH: 8,
+}
+
+# Current animation to play
+CURRENT_ANIM = ANIM_IDLE_TROT
+SPRITE_FRAMES_PER_ROW = ANIM_FRAME_COUNTS[CURRENT_ANIM]
+SPRITE_ROWS = 3  # walk, idle-trot, chin-scratch
+
+# Sprite scaling (render size = SPRITE_W * SPRITE_SCALE)
+SPRITE_SCALE = 2  # 32x32 sprite rendered as 64x64
+SPRITE_DISPLAY_W = SPRITE_W * SPRITE_SCALE
+SPRITE_DISPLAY_H = SPRITE_H * SPRITE_SCALE
+
+# Sprite position (centered based on display size)
+SPRITE_X = (WIDTH - SPRITE_DISPLAY_W) // 2
+SPRITE_Y = (HEIGHT - SPRITE_DISPLAY_H) // 2
 
 # =============================================================================
 # COLORS (RGB565)
@@ -88,6 +110,6 @@ MENU_RECTS = [
 # =============================================================================
 # ASSET PATHS
 # =============================================================================
-ASSET_MENU = "menutest.raw"
-ASSET_SPRITE = "lilguy.raw"
-ASSET_BG_FRAMES = [f"water_{i:02d}.raw" for i in range(20)]
+ASSET_BG = "tree-bg.raw"
+ASSET_MENU = "menutest.raw"  # Menu overlay with transparency
+ASSET_SPRITE = "yoshisprite.raw"

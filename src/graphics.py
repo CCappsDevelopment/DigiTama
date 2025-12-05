@@ -22,7 +22,7 @@ class Graphics:
         
         # Target state (what we want to display)
         self.sprite_frame_idx = 0
-        self.sprite_row = 0  # 0=forward, 1=left, 2=right, 3=back
+        self.sprite_row = config.CURRENT_ANIM  # Use configured animation row
         
         # Track if initial full render has been done
         self.initialized = False
@@ -33,15 +33,21 @@ class Graphics:
         
         # Load background
         bg_buf = self._load_raw(
-            config.ASSET_BG_FRAMES[0],
+            config.ASSET_BG,
             config.BUF_SIZE
         )
         
-        # Load menu overlay
-        menu_buf = self._load_raw(
-            config.ASSET_MENU,
-            config.BUF_SIZE
-        )
+        # Load menu overlay (if configured)
+        if config.ASSET_MENU:
+            menu_buf = self._load_raw(
+                config.ASSET_MENU,
+                config.BUF_SIZE
+            )
+            # Pre-composite: apply menu onto background with colorkey
+            print("Compositing base frame...")
+            self._overlay_colorkey(bg_buf, menu_buf)
+        
+        self.base_frame = bg_buf
         
         # Load sprite sheet
         sprite_size = config.SPRITE_SHEET_W * config.SPRITE_SHEET_H * config.BPP
@@ -49,12 +55,6 @@ class Graphics:
             config.ASSET_SPRITE,
             sprite_size
         )
-        
-        # Pre-composite: apply menu onto background with colorkey
-        # This is done ONCE at startup, not every frame
-        print("Compositing base frame...")
-        self._overlay_colorkey(bg_buf, menu_buf)
-        self.base_frame = bg_buf  # bg_buf now contains bg + menu
         
         print("Assets loaded")
     
@@ -102,15 +102,15 @@ class Graphics:
             self.current_sprite_row = self.sprite_row
     
     def _update_sprite_region(self, anim_row, frame_index):
-        """Redraw just the sprite's 16x16 region."""
+        """Redraw the sprite region (scaled to display size)."""
         x0 = config.SPRITE_X
         y0 = config.SPRITE_Y
-        x1 = x0 + config.SPRITE_W - 1
-        y1 = y0 + config.SPRITE_H - 1
+        x1 = x0 + config.SPRITE_DISPLAY_W - 1
+        y1 = y0 + config.SPRITE_DISPLAY_H - 1
         
-        # Create a small buffer for just the sprite region
-        region_w = config.SPRITE_W
-        region_h = config.SPRITE_H
+        # Create buffer for the scaled sprite region
+        region_w = config.SPRITE_DISPLAY_W
+        region_h = config.SPRITE_DISPLAY_H
         region_size = region_w * region_h * config.BPP
         region_buf = bytearray(region_size)
         
@@ -126,32 +126,41 @@ class Graphics:
                 region_buf[di] = self.base_frame[si]
                 region_buf[di + 1] = self.base_frame[si + 1]
         
-        # Blit sprite onto region buffer
-        self._blit_sprite_to_region(region_buf, region_w, anim_row, frame_index)
+        # Blit scaled sprite onto region buffer
+        self._blit_sprite_to_region_scaled(region_buf, region_w, anim_row, frame_index)
         
         # Push just this region to display
         self.display.block(x0, y0, x1, y1, region_buf)
     
-    def _blit_sprite_to_region(self, region_buf, region_w, anim_row, frame_index):
-        """Blit sprite frame onto a region buffer (not full frame)."""
+    def _blit_sprite_to_region_scaled(self, region_buf, region_w, anim_row, frame_index):
+        """Blit sprite frame onto region buffer with scaling.
+        
+        Each source pixel is rendered as a SPRITE_SCALE x SPRITE_SCALE block.
+        """
         sx0 = config.SPRITE_W * frame_index
         sy0 = config.SPRITE_H * anim_row
+        scale = config.SPRITE_SCALE
         
-        for dy in range(config.SPRITE_H):
-            sy = sy0 + dy
-            sheet_row_start = (sy * config.SPRITE_SHEET_W + sx0) * config.BPP
-            region_row_start = dy * region_w * config.BPP
+        for sy in range(config.SPRITE_H):
+            sheet_row_start = ((sy0 + sy) * config.SPRITE_SHEET_W + sx0) * config.BPP
             
-            for dx in range(config.SPRITE_W):
-                si = sheet_row_start + dx * config.BPP
+            for sx in range(config.SPRITE_W):
+                si = sheet_row_start + sx * config.BPP
                 hi = self.sprite_buf[si]
                 lo = self.sprite_buf[si + 1]
                 color = (hi << 8) | lo
                 if color == config.TRANSPARENT_KEY:
                     continue
-                di = region_row_start + dx * config.BPP
-                region_buf[di] = hi
-                region_buf[di + 1] = lo
+                
+                # Write scale x scale block of pixels
+                dst_x = sx * scale
+                dst_y = sy * scale
+                for by in range(scale):
+                    row_start = (dst_y + by) * region_w * config.BPP
+                    for bx in range(scale):
+                        di = row_start + (dst_x + bx) * config.BPP
+                        region_buf[di] = hi
+                        region_buf[di + 1] = lo
     
     def _restore_and_push_rect(self, rect):
         """Restore a rectangle from base_frame and push to display."""
@@ -211,11 +220,13 @@ class Graphics:
     
     def advance_sprite_frame(self):
         """Advance to next sprite animation frame."""
-        self.sprite_frame_idx = (self.sprite_frame_idx + 1) % config.SPRITE_FRAMES_PER_ROW
+        frame_count = config.ANIM_FRAME_COUNTS.get(self.sprite_row, 8)
+        self.sprite_frame_idx = (self.sprite_frame_idx + 1) % frame_count
     
     def set_sprite_row(self, row):
         """Set sprite animation row (direction)."""
         self.sprite_row = row % config.SPRITE_ROWS
+        self.sprite_frame_idx = 0  # Reset frame when changing animation
     
     def cycle_sprite_row(self):
         """Cycle to next sprite animation row."""

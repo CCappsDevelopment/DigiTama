@@ -119,8 +119,10 @@ class Game:
     
     def cleanup(self):
         """Clean up resources."""
-        self.input.cleanup()  # Disable button IRQs
-        self.hardware.cleanup()
+        if self.input:
+            self.input.cleanup()  # Disable button IRQs
+        if self.hardware:
+            self.hardware.cleanup()
 
 
 def main():
